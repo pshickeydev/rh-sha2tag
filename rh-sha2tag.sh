@@ -26,15 +26,14 @@ REG_URL='https://registry.redhat.io'
 # {"errors":[{"code":"UNAUTHORIZED","message":"Access to the requested resource is not authorized"}]}
 REG_LOGIN_URL='https://registry.redhat.io/auth/realms/rhcc/protocol/redhat-docker-v2/auth'
 SERVICE='docker-registry'
+REPOSITORY='rhacm2'
+IMAGE_NAME='console-rhel8'
 
-# Need to define requested scope as part of token request
+# Need to define requested scope as part of token request - repo:image:permission
 #
 # ex. skopeo --debug inspect docker://registry.rehdhat.io/ubi8/nginx-120
 # ...
 # DEBU[0000] GET https://registry.redhat.io/auth/realms/rhcc/protocol/redhat-docker-v2/auth?account=11009103%7Cpahickey-rht&scope=repository%3Aubi8%2Fnginx-120%3Apull&service=docker-registry
 # DEBU[0000] GET https://registry.redhat.io/v2/ubi8/nginx-120/manifests/latest
 # ...
-REG_TOK=$(curl -s -u "${REG_USER}:${REG_PASS}" "${REG_LOGIN_URL}/?service=${SERVICE}" | jq '.token')
-
-REPOSITORY=''
-IMAGE_NAME=''
+REG_TOK=$(curl -s -u "${REG_USER}:${REG_PASS}" "${REG_LOGIN_URL}?account=${REG_USER}&scope=repository:${REPOSITORY}:${IMAGE_NAME}:pull&service=${SERVICE}" | jq -r '.token')
