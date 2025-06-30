@@ -15,10 +15,12 @@ set -e
 #   `skopeo login -u={YOUR_SKOPEO_USERNAME} -p={YOUR_SKOPEO_PASSWORD} registry.redhat.io`
 #
 # TODO:
-# - Support checking _image_ digest as both appear to pull same image when used as pull spec
 # - Add full pull spec lookup
 # - usage/help flag
 # - verbose/debug flag
+#
+# Ref:
+#  - https://www.redhat.com/sysadmin/arguments-options-bash-scripts
 #
 # $ podman pull registry.redhat.io/multicluster-engine/cluster-proxy-addon-rhel8:v2.2.6
 # Trying to pull registry.redhat.io/multicluster-engine/cluster-proxy-addon-rhel8:v2.2.6...
@@ -39,15 +41,16 @@ set -e
 # Storing signatures
 # 9b73f86617559e29b6a911938e20b32396569467feaa4f993627e10c0bfcfd29
 
+IMAGE_AND_ORG=$(echo "${1}" | cut -d@ -f1 | cut -d/ -f2,3)
+MANIFEST_LIST_DIGEST=$(echo "${1}" | cut -d@ -f2)
 
-IMAGE_NAME=${1}
-MANIFEST_LIST_DIGEST=${2}
-REGISTRY_ORG='multicluster-engine'
+IMAGE_NAME=$(echo "${IMAGE_AND_ORG}" | cut -d/ -f2)
+REGISTRY_ORG=$(echo "${IMAGE_AND_ORG}" | cut -d/ -f1)
+
 
 IMAGE_TAGS=$(skopeo list-tags "docker://registry.redhat.io/${REGISTRY_ORG}/${IMAGE_NAME}")
 
-# Sort the tags in reverse lexicographical order to start with latest versions
-IMAGE_TAGS=$(echo "${IMAGE_TAGS}" | jq -r '.["Tags"] | sort | reverse | .[]')
+IMAGE_TAGS=$(echo "${IMAGE_TAGS}" | jq -r '.["Tags"] | sort | reverse | .[]' | grep -v -e "sha" | grep -v -e "source")
 
 for TAG in ${IMAGE_TAGS}; do
     # Generate digest from image manifest list
@@ -62,15 +65,19 @@ for TAG in ${IMAGE_TAGS}; do
     #   Manifest List Digest: registry.redhat.io/multicluster-engine/cluster-proxy-addon-rhel8...
     # Clicking the text in the `input` field will reveal the full value, or the Copy button
     # may be used to paste the full spec
-    DIGEST=$(skopeo inspect --raw "docker://registry.redhat.io/${REGISTRY_ORG}/${IMAGE_NAME}:${TAG}" |
-                sha256sum | awk '{ print $1 }')
-
-    # Manifest list digests include a 'sha256:' prefix as part of the pull spec
-    # Account for copying the copying with or without this prefix
-    if [ "${DIGEST}" = "${MANIFEST_LIST_DIGEST}" -o "sha256:${DIGEST}" = "${MANIFEST_LIST_DIGEST}" ]; then
-        echo "Found matching tag: ${TAG}"
-        exit 0
+    DIGESTS=$(skopeo inspect --raw "docker://registry.redhat.io/${REGISTRY_ORG}/${IMAGE_NAME}:${TAG}" | jq -r '.manifests[] | .digest' | cut -d: -f2)
+    if [ -z "${DIGESTS}" ]; then
+        continue
     fi
+
+    for DIGEST in ${DIGESTS}; do
+        # Manifest list digests include a 'sha256:' prefix as part of the pull spec
+        # Account for copying the copying with or without this prefix
+        if [ "${DIGEST}" = "${MANIFEST_LIST_DIGEST}" -o "sha256:${DIGEST}" = "${MANIFEST_LIST_DIGEST}" ]; then
+            echo "Found matching tag: ${TAG}"
+            exit 0
+        fi
+    done
 done
 
 echo "No matching tag found"
