@@ -2,6 +2,7 @@
 
 import argparse
 import base64
+import concurrent.futures
 import hashlib
 import json
 import os
@@ -16,6 +17,7 @@ MANIFEST_LIST_ACCEPT = ", ".join([
     "application/vnd.oci.image.index.v1+json",
 ])
 TIMEOUT = 30
+MAX_WORKERS = 8
 
 # Docker Hub uses a different API hostname than its public-facing domain.
 _DOCKER_API_HOST = "registry-1.docker.io"
@@ -206,18 +208,35 @@ def get_manifest_digests(registry, repo, tag, token):
     return digests
 
 
-def find_matching_tag(registry, repo, target_digest, tags, token):
-    normalized_target = target_digest.removeprefix("sha256:")
-
-    for tag in tags:
-        digests = get_manifest_digests(registry, repo, tag, token)
-        if not digests:
-            continue
-        for digest in digests:
-            if digest.removeprefix("sha256:") == normalized_target:
-                return tag
-
+def _tag_matches(registry, repo, tag, token, normalized_target):
+    """Return tag if its manifest contains the target digest, else None."""
+    digests = get_manifest_digests(registry, repo, tag, token)
+    for digest in digests:
+        if digest.removeprefix("sha256:") == normalized_target:
+            return tag
     return None
+
+
+def find_matching_tags(registry, repo, target_digest, tags, token, max_tags=1):
+    normalized_target = target_digest.removeprefix("sha256:")
+    matches = []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        futures = {
+            pool.submit(_tag_matches, registry, repo, tag, token, normalized_target): tag
+            for tag in tags
+        }
+        # Process results in tag-list order to keep output deterministic.
+        tag_to_future = {tag: f for f, tag in futures.items()}
+        for tag in tags:
+            result = tag_to_future[tag].result()
+            if result is not None:
+                matches.append(result)
+                if len(matches) >= max_tags:
+                    pool.shutdown(wait=False, cancel_futures=True)
+                    return matches
+
+    return matches
 
 
 def main():
@@ -225,6 +244,10 @@ def main():
         description="Find the image tag matching a given manifest digest"
     )
     parser.add_argument("pull_spec", help="Full pull spec: registry/repo@sha256:DIGEST")
+    parser.add_argument(
+        "-n", "--max-tags", type=int, default=1, metavar="N",
+        help="Maximum number of matching tags to return (default: 1)",
+    )
     args = parser.parse_args()
 
     registry, repo, target_digest = parse_pull_spec(args.pull_spec)
@@ -232,10 +255,12 @@ def main():
 
     token = get_bearer_token(registry, repo)
     tags = list_tags(registry, repo, token)
-    match = find_matching_tag(registry, repo, target_digest, tags, token)
+    matches = find_matching_tags(registry, repo, target_digest, tags, token,
+                                 max_tags=args.max_tags)
 
-    if match:
-        print(f"Found matching tag: {match}")
+    if matches:
+        for tag in matches:
+            print(tag)
         sys.exit(0)
     else:
         print("No matching tag found")

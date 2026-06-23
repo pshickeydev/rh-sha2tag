@@ -28,6 +28,9 @@ python3 container-sha2tag.py "ghcr.io/jqlang/jq@sha256:DIGEST"
 export REGISTRY_USER="..."
 export REGISTRY_PASSWORD="..."
 python3 container-sha2tag.py "registry.redhat.io/ubi9/ubi-minimal@sha256:DIGEST"
+
+# Return up to 5 matching tags
+python3 container-sha2tag.py -n 5 "registry.redhat.io/ubi9/ubi-minimal@sha256:DIGEST"
 ```
 
 Exit codes: `0` = match found, `1` = no match, `2` = error.
@@ -65,7 +68,7 @@ All logic lives in `container-sha2tag.py` and flows linearly through `main()`:
 1. **`parse_pull_spec`** — splits `registry/repo@sha256:digest` into `(registry, repo, target_digest)`. The repo path can be any depth (e.g. `library/alpine`, `ubi9/ubi-minimal`, `project/sub/image`).
 2. **`get_bearer_token`** — discovers auth requirements by provoking a 401 from the registry's `/v2/` endpoint and parsing the `Www-Authenticate` challenge. Tries anonymous token exchange first; falls back to Basic auth with credentials if anonymous fails. `_registry_api_url` maps `docker.io` to its actual API host `registry-1.docker.io`.
 3. **`list_tags`** — paginates through the V2 tag list API using RFC 5988 `Link: <url>; rel="next"` headers. Filters out tags containing `sha` or `source`, then sorts descending.
-4. **`find_matching_tag`** → **`get_manifest_digests`** — for each candidate tag, fetches the manifest and collects the `Docker-Content-Digest` header plus all per-architecture digests from the manifest list body. Returns the first tag whose digest set contains the target.
+4. **`find_matching_tags`** → **`get_manifest_digests`** — for each candidate tag, fetches the manifest and collects the `Docker-Content-Digest` header plus all per-architecture digests from the manifest list body. Collects up to `max_tags` tags whose digest set contains the target.
 
 ## Gotchas
 
