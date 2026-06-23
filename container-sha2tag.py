@@ -36,6 +36,12 @@ def parse_pull_spec(spec):
 
     registry = parts[0]
     repo = "/".join(parts[1:])
+
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", target_digest):
+        print(f"Error: invalid digest (expected sha256:<64 hex chars>): {target_digest}",
+              file=sys.stderr)
+        sys.exit(2)
+
     return registry, repo, target_digest
 
 
@@ -172,7 +178,7 @@ def list_tags(registry, repo, token):
             print(f"Error: failed to list tags: {e}", file=sys.stderr)
             sys.exit(2)
 
-    tags = [t for t in all_tags if "sha" not in t and "source" not in t]
+    tags = [t for t in all_tags if not t.startswith("sha256-") and not t.endswith("-source")]
     tags.sort(reverse=True)
     return tags
 
@@ -263,7 +269,7 @@ def main():
             print(tag)
         sys.exit(0)
     else:
-        print("No matching tag found")
+        print("No matching tag found", file=sys.stderr)
         sys.exit(1)
 
 

@@ -76,7 +76,7 @@ All logic lives in `container-sha2tag.py` and flows linearly through `main()`:
 - **Docker Hub hostname mapping.** `docker.io` is mapped to `registry-1.docker.io` for API calls. This is handled by `_registry_api_url`.
 - **Anonymous-first auth.** The tool tries anonymous token exchange before using credentials. This avoids sending unrelated credentials to public registries, but means an extra HTTP round-trip for private registries.
 - **Manifest media types matter.** Requests must accept both `application/vnd.docker.distribution.manifest.list.v2+json` and `application/vnd.oci.image.index.v1+json`. Missing either can cause silent failures where valid tags don't match.
-- **Tag filtering is substring-based.** `list_tags` excludes any tag where `"sha" in tag` or `"source" in tag`. This is intentional but aggressive — a tag like `v1.0-sha256` would be filtered out.
+- **Tag filtering excludes digest and source tags.** `list_tags` excludes tags starting with `sha256-` (digest-based references) and tags ending with `-source` (source container tags).
 - **Digest comparison normalizes the `sha256:` prefix.** Both the target and candidate digests have `sha256:` stripped via `removeprefix` before comparison. If you change digest handling, ensure this normalization is preserved.
 - **Fallback digest computation.** When the `Docker-Content-Digest` header is missing, the code computes `sha256` of the raw manifest body as a fallback. This is correct per the Docker spec but easy to break if response handling changes.
 - **`sys.exit()` is used for error control flow.** Parse errors, auth failures, and network errors all call `sys.exit(2)` directly rather than raising exceptions. Keep this pattern unless refactoring error handling globally.

@@ -112,27 +112,27 @@ def _require_creds():
 class TestParsePullSpec(unittest.TestCase):
     def test_valid_three_part(self):
         registry, repo, digest = sha2tag.parse_pull_spec(
-            "registry.redhat.io/ubi9/ubi-minimal@sha256:abc123"
+            "registry.redhat.io/ubi9/ubi-minimal@sha256:0000000000000000000000000000000000000000000000000000000000000000"
         )
         self.assertEqual(registry, "registry.redhat.io")
         self.assertEqual(repo, "ubi9/ubi-minimal")
-        self.assertEqual(digest, "sha256:abc123")
+        self.assertEqual(digest, "sha256:0000000000000000000000000000000000000000000000000000000000000000")
 
     def test_valid_two_part(self):
         registry, repo, digest = sha2tag.parse_pull_spec(
-            "docker.io/library/alpine@sha256:abc123"
+            "docker.io/library/alpine@sha256:0000000000000000000000000000000000000000000000000000000000000000"
         )
         self.assertEqual(registry, "docker.io")
         self.assertEqual(repo, "library/alpine")
-        self.assertEqual(digest, "sha256:abc123")
+        self.assertEqual(digest, "sha256:0000000000000000000000000000000000000000000000000000000000000000")
 
     def test_valid_deep_path(self):
         registry, repo, digest = sha2tag.parse_pull_spec(
-            "gcr.io/project/sub/image@sha256:abc123"
+            "gcr.io/project/sub/image@sha256:0000000000000000000000000000000000000000000000000000000000000000"
         )
         self.assertEqual(registry, "gcr.io")
         self.assertEqual(repo, "project/sub/image")
-        self.assertEqual(digest, "sha256:abc123")
+        self.assertEqual(digest, "sha256:0000000000000000000000000000000000000000000000000000000000000000")
 
     def test_missing_at_sign(self):
         with self.assertRaises(SystemExit) as cm:
@@ -141,7 +141,37 @@ class TestParsePullSpec(unittest.TestCase):
 
     def test_no_repo_path(self):
         with self.assertRaises(SystemExit) as cm:
-            sha2tag.parse_pull_spec("ubi-minimal@sha256:abc123")
+            sha2tag.parse_pull_spec("ubi-minimal@sha256:0000000000000000000000000000000000000000000000000000000000000000")
+        self.assertEqual(cm.exception.code, 2)
+
+    def test_invalid_digest_no_prefix(self):
+        with self.assertRaises(SystemExit) as cm:
+            sha2tag.parse_pull_spec(
+                "registry.redhat.io/ubi9/ubi-minimal@abc123"
+            )
+        self.assertEqual(cm.exception.code, 2)
+
+    def test_invalid_digest_wrong_length(self):
+        with self.assertRaises(SystemExit) as cm:
+            sha2tag.parse_pull_spec(
+                "registry.redhat.io/ubi9/ubi-minimal@sha256:abcdef"
+            )
+        self.assertEqual(cm.exception.code, 2)
+
+    def test_invalid_digest_uppercase_hex(self):
+        with self.assertRaises(SystemExit) as cm:
+            sha2tag.parse_pull_spec(
+                "registry.redhat.io/ubi9/ubi-minimal@sha256:AAAA"
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            )
+        self.assertEqual(cm.exception.code, 2)
+
+    def test_invalid_digest_non_hex(self):
+        with self.assertRaises(SystemExit) as cm:
+            sha2tag.parse_pull_spec(
+                "registry.redhat.io/ubi9/ubi-minimal@sha256:"
+                "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+            )
         self.assertEqual(cm.exception.code, 2)
 
 
@@ -180,6 +210,47 @@ class TestParseLinkNext(unittest.TestCase):
 
     def test_empty(self):
         self.assertIsNone(sha2tag._parse_link_next("", "x"))
+
+
+# ===================================================================
+# Tag filtering (pure logic — no network)
+# ===================================================================
+
+
+def _filter_tags(all_tags):
+    """Apply the same filter as list_tags without hitting the network."""
+    return [t for t in all_tags if not t.startswith("sha256-") and not t.endswith("-source")]
+
+
+class TestTagFiltering(unittest.TestCase):
+    def test_excludes_sha256_prefix(self):
+        tags = _filter_tags(["sha256-abc123def456", "9.8", "latest"])
+        self.assertEqual(tags, ["9.8", "latest"])
+
+    def test_excludes_source_suffix(self):
+        tags = _filter_tags(["9.8-source", "9.8", "9.7-source"])
+        self.assertEqual(tags, ["9.8"])
+
+    def test_keeps_tag_containing_sha_substring(self):
+        tags = _filter_tags(["v1.0-reshape", "sharding-v2", "latest"])
+        self.assertEqual(tags, ["v1.0-reshape", "sharding-v2", "latest"])
+
+    def test_keeps_tag_containing_source_substring(self):
+        tags = _filter_tags(["opensource-2.0", "my-source-build", "latest"])
+        self.assertEqual(tags, ["opensource-2.0", "my-source-build", "latest"])
+
+    def test_excludes_both_patterns(self):
+        tags = _filter_tags([
+            "sha256-deadbeef", "9.8-source", "9.8", "sha256-cafe", "latest",
+        ])
+        self.assertEqual(tags, ["9.8", "latest"])
+
+    def test_empty_list(self):
+        self.assertEqual(_filter_tags([]), [])
+
+    def test_all_filtered(self):
+        tags = _filter_tags(["sha256-aaa", "1.0-source"])
+        self.assertEqual(tags, [])
 
 
 # ===================================================================
@@ -271,11 +342,11 @@ class TestListTags(unittest.TestCase):
         self.assertIsInstance(tags, list)
         self.assertGreater(len(tags), 0)
 
-    def test_excludes_sha_tags(self):
+    def test_excludes_sha_and_source_tags(self):
         tags = sha2tag.list_tags(RH_REGISTRY, UBI_REPO, self.token)
         for tag in tags:
-            self.assertNotIn("sha", tag, f"tag '{tag}' should have been filtered out")
-            self.assertNotIn("source", tag, f"tag '{tag}' should have been filtered out")
+            self.assertFalse(tag.startswith("sha256-"), f"tag '{tag}' should have been filtered out")
+            self.assertFalse(tag.endswith("-source"), f"tag '{tag}' should have been filtered out")
 
     def test_sorted_descending(self):
         tags = sha2tag.list_tags(RH_REGISTRY, UBI_REPO, self.token)

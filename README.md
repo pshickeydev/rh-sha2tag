@@ -92,7 +92,8 @@ v2.9.4-1
    endpoint and parsing the `Www-Authenticate` challenge. Tries anonymous token
    exchange first; falls back to credentials if that fails.
 3. Lists all tags for the image, paginating through the full tag list.
-4. Filters out `sha`-based and `source` tags.
+4. Filters out `sha256-` prefixed tags (digest-based references) and `-source`
+   suffixed tags (source container tags).
 5. For each remaining tag, fetches the manifest and compares the manifest list
    digest (from the `Docker-Content-Digest` header) and all per-architecture
    digests against the target.
