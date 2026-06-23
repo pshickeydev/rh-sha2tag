@@ -1,7 +1,0 @@
-issue_prefix: rs
-issue-prefix: rs
-dolt.auto-start: false
-export.auto: false
-gc.endpoint_origin: inherited_city
-gc.endpoint_status: verified
-types.custom: molecule,convoy,message,event,gate,merge-request,agent,role,rig,session,spec,convergence,step

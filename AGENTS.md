@@ -39,7 +39,3 @@ All logic lives in `rh-sha2tag.py` and flows linearly through `main()`:
 - **Fallback digest computation.** When the `Docker-Content-Digest` header is missing, the code computes `sha256` of the raw manifest body as a fallback. This is correct per the Docker spec but easy to break if response handling changes.
 - **`sys.exit()` is used for error control flow.** Parse errors, auth failures, and network errors all call `sys.exit(2)` directly rather than raising exceptions. Keep this pattern unless refactoring error handling globally.
 - **Status output goes to stderr, match output to stdout.** The progress message and errors print to `sys.stderr`; only the final tag prints to `sys.stdout`. This matters for piping.
-
-## `.beads/` directory
-
-This is a [Beads](https://github.com/beads-project) issue-tracking directory. It is not part of the tool's functionality — ignore it when making changes to the CLI.
