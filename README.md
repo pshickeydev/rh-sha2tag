@@ -36,6 +36,13 @@ Run with a full pull spec containing the digest:
 python3 container-sha2tag.py "docker.io/library/alpine@sha256:DIGEST"
 ```
 
+To return multiple matching tags (e.g. when a digest is shared across versions),
+use `-n`:
+
+```bash
+python3 container-sha2tag.py -n 5 "registry.redhat.io/ubi9/ubi-minimal@sha256:DIGEST"
+```
+
 For private registries, export your credentials first:
 
 ```bash
@@ -54,13 +61,20 @@ accepted as a fallback.
 $ python3 container-sha2tag.py \
     "ghcr.io/jqlang/jq@sha256:096b83865ad59b5b02841f103f83f45c51318394331bf1995e187ea3be937432"
 Looking up tags for jqlang/jq on ghcr.io matching sha256:096b8386...
-Found matching tag: 1.7.1
+1.7.1
+
+# Return up to 3 matching tags
+$ python3 container-sha2tag.py -n 3 \
+    "registry.redhat.io/ubi9/ubi-minimal@sha256:850143255ee0d1915f09aaa09f6ed31f24086ba605c323badfbefa95b8c52b0e"
+Looking up tags for ubi9/ubi-minimal on registry.redhat.io matching sha256:85014325...
+9.8-1782191395
+9.8
 
 # Private registry — credentials required
 $ python3 container-sha2tag.py \
     "registry.redhat.io/multicluster-engine/cluster-proxy-rhel9@sha256:b695183f2f0977fc1393bda856a070fb4b58cf80c6033c7d172b1f989cd64d4f"
 Looking up tags for multicluster-engine/cluster-proxy-rhel9 on registry.redhat.io matching sha256:b695183f...
-Found matching tag: v2.9.4-1
+v2.9.4-1
 ```
 
 ### Exit codes
@@ -82,4 +96,4 @@ Found matching tag: v2.9.4-1
 5. For each remaining tag, fetches the manifest and compares the manifest list
    digest (from the `Docker-Content-Digest` header) and all per-architecture
    digests against the target.
-6. Prints the first matching tag.
+6. Prints matching tags (one per line, up to `-n` matches).

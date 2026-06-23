@@ -326,43 +326,53 @@ class TestFindMatchingTag(unittest.TestCase):
     def test_ubi_manifest_list_digest_finds_tag(self):
         token = sha2tag.get_bearer_token(RH_REGISTRY, UBI_REPO)
         tags = sha2tag.list_tags(RH_REGISTRY, UBI_REPO, token)
-        match = sha2tag.find_matching_tag(
+        matches = sha2tag.find_matching_tags(
             RH_REGISTRY, UBI_REPO, UBI_MANIFEST_LIST_DIGEST, tags, token
         )
-        self.assertIsNotNone(match)
+        self.assertGreater(len(matches), 0)
 
     def test_ubi_arch_digest_finds_tag(self):
         token = sha2tag.get_bearer_token(RH_REGISTRY, UBI_REPO)
         tags = sha2tag.list_tags(RH_REGISTRY, UBI_REPO, token)
-        match = sha2tag.find_matching_tag(
+        matches = sha2tag.find_matching_tags(
             RH_REGISTRY, UBI_REPO, UBI_ARCH_DIGEST, tags, token
         )
-        self.assertIsNotNone(match)
+        self.assertGreater(len(matches), 0)
 
     def test_ose_cli_unique_digest(self):
         token = sha2tag.get_bearer_token(RH_REGISTRY, OSE_REPO)
         tags = sha2tag.list_tags(RH_REGISTRY, OSE_REPO, token)
-        match = sha2tag.find_matching_tag(
+        matches = sha2tag.find_matching_tags(
             RH_REGISTRY, OSE_REPO, OSE_MANIFEST_LIST_DIGEST, tags, token
         )
-        self.assertEqual(match, OSE_TAG)
+        self.assertIn(OSE_TAG, matches)
 
-    def test_bogus_digest_returns_none(self):
+    def test_bogus_digest_returns_empty(self):
         token = sha2tag.get_bearer_token(RH_REGISTRY, UBI_REPO)
         # Only check a few tags to keep the test fast
         tags = sha2tag.list_tags(RH_REGISTRY, UBI_REPO, token)[:3]
-        match = sha2tag.find_matching_tag(
+        matches = sha2tag.find_matching_tags(
             RH_REGISTRY, UBI_REPO, BOGUS_DIGEST, tags, token
         )
-        self.assertIsNone(match)
+        self.assertEqual(matches, [])
 
     def test_digest_without_prefix(self):
         """Target digest without the sha256: prefix should still match."""
         token = sha2tag.get_bearer_token(RH_REGISTRY, UBI_REPO)
         tags = sha2tag.list_tags(RH_REGISTRY, UBI_REPO, token)
         bare = UBI_MANIFEST_LIST_DIGEST.removeprefix("sha256:")
-        match = sha2tag.find_matching_tag(RH_REGISTRY, UBI_REPO, bare, tags, token)
-        self.assertIsNotNone(match)
+        matches = sha2tag.find_matching_tags(RH_REGISTRY, UBI_REPO, bare, tags, token)
+        self.assertGreater(len(matches), 0)
+
+    def test_max_tags_limits_results(self):
+        """max_tags should cap the number of returned matches."""
+        token = sha2tag.get_bearer_token(RH_REGISTRY, UBI_REPO)
+        tags = sha2tag.list_tags(RH_REGISTRY, UBI_REPO, token)
+        matches = sha2tag.find_matching_tags(
+            RH_REGISTRY, UBI_REPO, UBI_MANIFEST_LIST_DIGEST, tags, token,
+            max_tags=1,
+        )
+        self.assertEqual(len(matches), 1)
 
 
 # ===================================================================
@@ -382,6 +392,17 @@ class TestCLI(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0)
         self.assertIn(OSE_TAG, result.stdout)
+
+    def test_max_tags_flag(self):
+        pull_spec = f"{RH_REGISTRY}/{UBI_REPO}@{UBI_MANIFEST_LIST_DIGEST}"
+        result = subprocess.run(
+            [sys.executable, SCRIPT, "-n", "3", pull_spec],
+            capture_output=True, text=True, timeout=300,
+        )
+        self.assertEqual(result.returncode, 0)
+        tags = result.stdout.strip().splitlines()
+        self.assertGreaterEqual(len(tags), 1)
+        self.assertLessEqual(len(tags), 3)
 
     def test_no_match_exits_one(self):
         pull_spec = f"{RH_REGISTRY}/{UBI_REPO}@{BOGUS_DIGEST}"
